@@ -1,0 +1,73 @@
+# NODE – Aplicación de tres capas con Docker Compose (MySQL + Node.js + Nginx)
+
+## Objetivo
+Desplegar con un solo comando una aplicación web de tres capas: base de datos MySQL, backend en Node.js y frontend servido por Nginx.
+
+## Arquitectura
+| Servicio | Contenedor | Build | Puerto host → contenedor | Función |
+|----------|------------|-------|--------------------------|---------|
+| `db` | `mysql_container` | `./db` | 3309 → 3306 | Base de datos MySQL (`test_db`) |
+| `back` | `node` | `./back` | 3000 → 3000 | API en Node.js, se conecta a `db` |
+| `frontend` | `nginx` | `./front` | 8077 → 80 | Servidor web de la parte visual |
+
+Flujo: navegador → `frontend` (Nginx) → `back` (Node.js) → `db` (MySQL).
+
+## Estructura de archivos
+```
+NODE/
+├── docker-compose.yml
+├── .env            ← contiene PASS (no subir al repositorio)
+├── db/             ← Dockerfile (y scripts) de MySQL
+├── back/           ← Dockerfile y código de Node.js
+└── front/          ← Dockerfile y archivos del frontend
+```
+
+## Configuración
+Las credenciales no están escritas en el compose; se leen del archivo `.env` de la misma carpeta:
+
+```
+PASS=tu_contraseña
+```
+
+Esa variable se usa como contraseña de root de MySQL (`MYSQL_ROOT_PASSWORD`), en el healthcheck y en la conexión del backend (`DB_PASSWORD`).
+
+## docker-compose.yml explicado
+
+### db
+- `build: ./db`: construye la imagen desde su propio Dockerfile.
+- `restart: always`: se reinicia automáticamente si cae o si arranca el host.
+- `MYSQL_DATABASE: test_db`: crea la base de datos al iniciar por primera vez.
+- `ports: "3309:3306"`: expone MySQL en el puerto 3309 del host (evita chocar con un MySQL local en el 3306).
+- `volumes: db_data:/var/lib/mysql`: volumen con nombre para que los datos persistan aunque se borre el contenedor.
+- `healthcheck`: ejecuta `mysqladmin ping` cada 5 s (hasta 5 reintentos) para saber cuándo MySQL está realmente listo.
+
+### back
+- Variables `DB_HOST=db`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`: datos de conexión a la base de datos. `DB_HOST=db` funciona porque Compose crea una red interna donde cada servicio es accesible por su nombre.
+- `depends_on` con `condition: service_healthy`: el backend no arranca hasta que el healthcheck de `db` pase. Así se evitan errores de conexión al iniciar.
+
+### frontend
+- `ports: "8077:80"`: la web se sirve en el puerto 8077 del host.
+- `depends_on: back`: arranca después del backend (solo controla el orden, no espera a que esté listo).
+
+### Volumen
+- `db_data`: almacena los datos de MySQL de forma persistente.
+
+## Construcción y ejecución
+```bash
+sudo docker compose up -d --build
+```
+
+## Comprobación
+```bash
+sudo docker compose ps              # los tres servicios deben estar "Up" (db en "healthy")
+sudo docker compose logs back       # revisar que el backend conectó con la base de datos
+curl localhost:3000                 # respuesta del backend
+curl localhost:8077                 # respuesta del frontend
+```
+También se puede abrir `http://localhost:8077` en el navegador.
+
+Para entrar a MySQL desde el host:
+```bash
+mysql -h 127.0.0.1 -P 3309 -u root -p
+```
+

@@ -1,0 +1,28 @@
+version: '3'
+services:
+  mysql:
+    container_name: base_del_joseo
+    image: mysql:5.7
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ${PASS}
+      MYSQL_DATABASE: prestashop
+    networks:
+      - brrr
+  prestashop:
+    container_name: prestashop
+    image: prestashop/prestashop:latest
+    restart: always
+    depends_on:
+      - mysql
+    ports:
+      - 8090:80
+    environment:
+      DB_SERVER: base_del_joseo
+      DB_NAME: prestashop
+      DB_USER: ${USER}
+      DB_PASSWD: ${PASS}
+    networks:
+      - brrr
+networks:
+    brrr:

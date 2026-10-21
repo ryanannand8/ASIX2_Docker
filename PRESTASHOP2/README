@@ -1,0 +1,116 @@
+# PRESTASHOP2 – PrestaShop con HTTPS, MySQL 8 y phpMyAdmin en Docker Compose
+
+## Objetivo
+Desplegar una tienda PrestaShop con instalación automática, base de datos MySQL 8 persistente, phpMyAdmin para administrarla y un proxy inverso con HTTPS (https-portal) accesible mediante el dominio local `prestashopryan.test`.
+
+## Arquitectura
+| Servicio | Contenedor | Imagen | Puertos host → contenedor | Función |
+|----------|------------|--------|---------------------------|---------|
+| `prestashop` | `prestashop_2` | `prestashop/prestashop:latest` | 8199 → 80 | Tienda y panel de administración |
+| `db` | `mysql_db_ps` | `mysql:8.0` | (no se expone) | Base de datos |
+| `phpmyadmin` | `phpmyadmin2` | `phpmyadmin:5` | 8198 → 80 | Gestión web de la base de datos |
+| `https-portal` | `https_portal` | `steveltn/https-portal:1` | 80 → 80, 443 → 443, 444 → 443 | Proxy inverso con HTTPS |
+
+### Redes
+| Red | Tipo | Servicios | Propósito |
+|-----|------|-----------|-----------|
+| `front` | bridge | prestashop, phpmyadmin, https-portal | Tráfico de cara al usuario |
+| `back` | bridge, `internal: true` | prestashop, db, phpmyadmin | Base de datos aislada: sin acceso a internet ni al host |
+
+Flujo: navegador → `https-portal` (HTTPS) → `prestashop` → `db`.
+
+## Estructura de archivos
+```
+PRESTASHOP2/
+├── docker-compose.yml
+├── .env.example    ← plantilla de variables (el .env real no se sube)
+└── .gitignore
+```
+
+## Configuración
+
+### Variables de entorno
+Las credenciales se leen de un `.env` que **no se incluye en el repositorio**. Se crea a partir de la plantilla:
+
+```bash
+cp .env.example .env
+```
+
+Y se rellena con valores propios:
+
+```
+DB_NAME=prestashop
+DB_USER=ps_user
+DB_PASSWORD=cambia_esta_contraseña
+```
+
+### Resolución del dominio
+`prestashopryan.test` es un dominio local, así que hay que apuntarlo a la máquina que ejecuta Docker. En Linux, añadir a `/etc/hosts`:
+
+```
+127.0.0.1  prestashopryan.test
+```
+
+## docker-compose.yml explicado
+
+### prestashop
+- `PS_INSTALL_AUTO: 1`: instala PrestaShop automáticamente en el primer arranque, sin pasar por el asistente web.
+- `DB_SERVER: db`: nombre del servicio de la base de datos (resuelto por la red `back`).
+- `DB_NAME`, `DB_USER`, `DB_PASSWD`: datos de conexión, tomados del `.env`.
+- `PS_DOMAIN`: dominio con el que PrestaShop se instala. Debe coincidir con el que se usa en el navegador.
+- `PS_ENABLE_SSL: 0`: PrestaShop no fuerza HTTPS por sí mismo; el HTTPS lo gestiona el proxy.
+- `PS_LANGUAGE: en`, `PS_COUNTRY: ES`: idioma inglés y país España.
+- Redes `front` y `back`: accesible por el proxy y con acceso a la base de datos.
+
+### db
+- `image: mysql:8.0`.
+- `MYSQL_DATABASE`, `MYSQL_USER`, `MYSQL_PASSWORD`: crean la base de datos y un usuario dedicado.
+- `MYSQL_RANDOM_ROOT_PASSWORD: "1"`: genera una contraseña de root aleatoria; solo se usa el usuario dedicado.
+- `volumes: db_data`: los datos persisten aunque se elimine el contenedor.
+- `healthcheck`: comprueba con `mysqladmin ping` que MySQL responde; espera 30 s antes de empezar a contar fallos (`start_period`) y reintenta hasta 10 veces.
+- Solo en la red `back`: no es accesible desde fuera.
+
+### phpmyadmin
+- `PMA_HOST: db`: se conecta al servicio `db`.
+- Acceso en `http://localhost:8198` con `DB_USER` y `DB_PASSWORD` (root no sirve, su contraseña es aleatoria).
+
+### https-portal
+- `DOMAINS: 'prestashopryan.test -> http://prestashop_2:80'`: publica el dominio por HTTPS y reenvía el tráfico al contenedor de PrestaShop.
+- `STAGE: 'local'`: genera certificados autofirmados (sin Let's Encrypt), válidos para pruebas locales.
+- `PROXY_ADD_X_FORWARDED_HEADERS: 'true'`: añade cabeceras `X-Forwarded-*` para que PrestaShop sepa que la petición original era HTTPS.
+- `volumes: https_portal_data`: conserva los certificados generados.
+
+## Construcción y ejecución
+```bash
+sudo docker compose up -d
+```
+La primera vez, PrestaShop tarda unos minutos en instalarse. Se puede seguir con:
+
+```bash
+sudo docker compose logs -f prestashop
+```
+
+## Comprobación
+```bash
+sudo docker compose ps     # los cuatro servicios en "Up" (db en "healthy")
+```
+
+| Acceso | URL |
+|--------|-----|
+| Tienda (HTTPS, vía proxy) | `https://prestashopryan.test` |
+| Tienda (directa, sin proxy) | `http://localhost:8199` |
+| phpMyAdmin | `http://localhost:8198` |
+
+El navegador mostrará una advertencia de certificado porque es autofirmado (`STAGE: local`); es normal en un entorno de pruebas.
+
+## Problemas encontrados y solución
+| Problema | Causa | Solución |
+|----------|-------|----------|
+| PrestaShop no funciona bien con el mapeo de puertos | PrestaShop guarda el dominio (y puerto) en su base de datos y espera que coincida con la URL usada | Se actualizaron las tablas de la base de datos con el dominio correcto; una alternativa más sencilla es quitar el puerto de `PS_DOMAIN` |
+| (completar) | | |
+
+## Parada y limpieza
+```bash
+sudo docker compose down        # para y elimina los contenedores (los datos se conservan)
+sudo docker compose down -v     # además borra los volúmenes (se pierden la base de datos y los certificados)
+```

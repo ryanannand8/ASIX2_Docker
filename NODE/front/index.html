@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tabla con Imágenes desde MySQL</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; background-color: #f4f4f9; }
+        table { width: 100%; border-collapse: collapse; background-color: #fff; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+        th, td { padding: 12px; border: 1px solid #ddd; text-align: left; vertical-align: middle; }
+        th { background-color: #007BFF; color: white; }
+        img.avatar { width: 50px; height: 50px; border-radius: 50%; object-fit: cover; }
+    </style>
+</head>
+<body>
+
+    <h2>Listado de Usuarios con Imágenes (desde MySQL)</h2>
+    
+    <table>
+        <thead>
+            <tr>
+                <th>Avatar</th>
+                <th>ID</th>
+                <th>Nombre</th>
+                <th>Detalle / Correo</th>
+            </tr>
+        </thead>
+        <tbody id="cuerpo-tabla">
+            <tr>
+                <td colspan="4" style="text-align: center;">Cargando datos...</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <script>
+        async function cargarDatos() {
+            try {
+                // CORREGIDO: Apunta a /api/data en lugar de /api/datos
+                const respuesta = await fetch('http://localhost:3000/api/data');
+                const datos = await respuesta.json();
+
+                const tbody = document.getElementById('cuerpo-tabla');
+                tbody.innerHTML = '';
+
+                if (datos.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="4" style="text-align: center;">No hay registros</td></tr>';
+                    return;
+                }
+
+                datos.forEach(item => {
+                    const fila = document.createElement('tr');
+                    fila.innerHTML = `
+                        <td><img src="${item.imagen}" alt="Avatar" class="avatar"></td>
+                        <td>${item.id}</td>
+                        <td>${item.nombre}</td>
+                        <td>${item.nombre}</td>
+                    `;
+                    tbody.appendChild(fila);
+                });
+            } catch (error) {
+                console.error('Error al cargar los datos:', error);
+                document.getElementById('cuerpo-tabla').innerHTML = '<tr><td colspan="4" style="text-align: center; color: red;">Error al conectar con el servidor</td></tr>';
+            }
+        }
+
+        cargarDatos();
+    </script>
+
+</body>
+</html>

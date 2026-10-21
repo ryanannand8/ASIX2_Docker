@@ -1,0 +1,82 @@
+# wordpress0 – WordPress con MySQL en Docker Compose
+
+## Objetivo
+Desplegar un sitio WordPress básico con Docker Compose: un contenedor de WordPress y otro de MySQL con los datos persistentes. Es la versión mínima, sin proxy HTTPS ni phpMyAdmin.
+
+## Arquitectura
+| Servicio | Imagen | Puerto host → contenedor | Función |
+|----------|--------|--------------------------|---------|
+| `wordpress` | `wordpress` | 8081 → 80 | Sitio WordPress (Apache + PHP) |
+| `db` | `mysql:latest` | (no se expone) | Base de datos `ryan` |
+
+Este compose no define redes ni `container_name`: Compose crea una red por defecto en la que los servicios se ven por su nombre (`db`), y nombra los contenedores a partir de la carpeta (por ejemplo `wordpress0-wordpress-1`).
+
+Flujo: navegador → `wordpress` → `db`.
+
+## Estructura de archivos
+```
+wordpress0/
+├── docker-compose.yml
+├── .env.example    ← plantilla de variables (el .env real no se sube)
+└── .gitignore
+```
+
+## Configuración
+Las credenciales se leen de un `.env` que **no se incluye en el repositorio**. Se crea a partir de la plantilla:
+
+```bash
+cp .env.example .env
+```
+
+Y se rellena con valores propios:
+
+```
+DBUSER=wp_user
+DBPASS=cambia_esta_contraseña
+```
+
+## docker-compose.yml explicado
+
+### wordpress
+- `image: wordpress`: imagen oficial de WordPress (etiqueta `latest`).
+- `restart: always`: se reinicia solo si cae o si arranca el host.
+- `ports: 8081:80`: el sitio se sirve en el puerto 8081 del host.
+- `WORDPRESS_DB_HOST: db`: nombre del servicio de la base de datos.
+- `WORDPRESS_DB_USER`, `WORDPRESS_DB_PASSWORD`: usuario y contraseña, tomados del `.env`.
+- `WORDPRESS_DB_NAME: ryan`: nombre de la base de datos.
+- `volumes: wordpress:/var/www/html`: conserva archivos del sitio, temas, plugins y subidas.
+
+### db
+- `image: mysql:latest`: imagen oficial de MySQL (última versión).
+- `MYSQL_DATABASE: ryan`: crea la base de datos en el primer arranque.
+- `MYSQL_USER`, `MYSQL_PASSWORD`: crean un usuario dedicado con esas credenciales.
+- `MYSQL_RANDOM_ROOT_PASSWORD: "1"`: genera una contraseña de root aleatoria; solo se usa el usuario dedicado.
+- `volumes: db:/var/lib/mysql`: los datos persisten aunque se elimine el contenedor.
+
+### Volúmenes
+- `wordpress`: archivos del sitio.
+- `db`: datos de MySQL.
+
+## Construcción y ejecución
+```bash
+sudo docker compose up -d
+```
+
+## Comprobación
+```bash
+sudo docker compose ps
+sudo docker compose logs wordpress     # revisar errores de conexión a la base de datos
+```
+
+Abrir `http://localhost:8081`. En el primer acceso aparece el asistente de instalación de WordPress (idioma, título del sitio, usuario administrador).
+
+## Problemas encontrados y solución
+| Problema | Causa | Solución |
+|----------|-------|----------|
+| (completar) | | |
+
+## Parada y limpieza
+```bash
+sudo docker compose down        # para y elimina los contenedores (los datos se conservan)
+sudo docker compose down -v     # además borra los volúmenes (se pierden el sitio y la base de datos)
+```

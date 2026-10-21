@@ -1,0 +1,73 @@
+services:
+
+  wordpress:
+    image: wordpress:6.8-apache
+    restart: always
+    ports:
+      - 8082:80
+    environment:
+      WORDPRESS_DB_HOST: db
+      WORDPRESS_DB_USER: ${DB_USER}
+      WORDPRESS_DB_PASSWORD: ${DB_PASSWORD}
+      WORDPRESS_DB_NAME: ${DB_NAME}
+    volumes:
+      - wordpress:/var/www/html
+    networks:
+      - wp-red
+      - back
+    depends_on:
+      db:
+        condition: service_healthy
+  db:
+    image: mysql:8.4
+    restart: always
+    environment:
+      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_RANDOM_ROOT_PASSWORD: "1"
+    volumes:
+      - db:/var/lib/mysql
+    networks:
+      - back
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u${DB_USER}", "-p${DB_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+  phpmyadmin:
+    image: phpmyadmin:5
+    restart: always
+    ports:
+      - 8088:80
+    environment:
+       PMA_HOST: db
+    networks:
+      - wp-red
+      - back
+    depends_on:
+      db:
+        condition: service_healthy
+  https-portal:
+    image: steveltn/https-portal:1
+    ports:
+      - '80:80'
+      - '443:443'
+    restart: always
+    environment:
+      DOMAINS: 'localhost -> http://wordpress:80'
+      STAGE: local  
+    networks:
+      - wp-red
+    depends_on:
+      - wordpress
+networks:
+  wp-red:
+    driver: bridge
+  back:
+    driver: bridge
+    internal: true
+volumes:
+  wordpress:
+  db:

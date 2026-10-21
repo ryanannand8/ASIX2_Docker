@@ -1,0 +1,86 @@
+version: '3.8'
+
+services:
+  prestashop:
+    container_name: prestashop_2
+    image: prestashop/prestashop:latest
+    restart: always
+    ports:
+      - "8199:80"
+    environment:
+      DB_SERVER: db
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWD: ${DB_PASSWORD}
+      PS_INSTALL_AUTO: 1
+      PS_DOMAIN: prestashopryan.test:443 # prestashop no se lleva muy bien  con el mapeado de puertos en este caso yo he actualizado tablas en la base de datos , pero con quitar el puerto bastaria
+      PS_ENABLE_SSL: 0
+      PS_LANGUAGE: en
+      PS_COUNTRY: ES
+    networks:
+      - front
+      - back
+
+  db:
+    container_name: mysql_db_ps
+    image: mysql:8.0
+    restart: always
+    environment:
+      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_RANDOM_ROOT_PASSWORD: "1"
+    volumes:
+      - db_data:/var/lib/mysql
+    networks:
+      - back
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u${DB_USER}", "-p${DB_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  phpmyadmin:
+    container_name: phpmyadmin2
+    image: phpmyadmin:5
+    restart: always
+    ports:
+      - "8198:80"
+    environment:
+      PMA_HOST: db
+    networks:
+      - front
+      - back
+    depends_on:
+      - db
+
+  https-portal:
+    container_name: https_portal
+    image: steveltn/https-portal:1
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+      - "444:443"
+    environment:
+      DOMAINS: 'prestashopryan.test -> http://prestashop_2:80'
+      STAGE: 'local'
+      PROXY_ADD_X_FORWARDED_HEADERS: 'true'
+    volumes:
+      - https_portal_data:/var/lib/https-portal
+    networks:
+      - front
+    depends_on:
+      - prestashop
+
+networks:
+  front:
+    driver: bridge
+  back:
+    driver: bridge
+    internal: true
+
+volumes:
+  db_data:
+  https_portal_data:

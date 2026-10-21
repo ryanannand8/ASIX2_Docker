@@ -1,0 +1,107 @@
+	# wordpress1 – WordPress con HTTPS, MySQL 8.4 y phpMyAdmin en Docker Compose
+
+## Objetivo
+Desplegar un sitio WordPress con base de datos MySQL persistente, phpMyAdmin para administrarla y un proxy inverso con HTTPS (https-portal) accesible en `https://localhost`.
+
+## Arquitectura
+| Servicio | Imagen | Puertos host → contenedor | Función |
+|----------|--------|---------------------------|---------|
+| `wordpress` | `wordpress:6.8-apache` | 8082 → 80 | Sitio WordPress |
+| `db` | `mysql:8.4` | (no se expone) | Base de datos |
+| `phpmyadmin` | `phpmyadmin:5` | 8088 → 80 | Gestión web de la base de datos |
+| `https-portal` | `steveltn/https-portal:1` | 80 → 80, 443 → 443 | Proxy inverso con HTTPS |
+
+Este compose no define `container_name`, así que Docker nombra los contenedores a partir de la carpeta (por ejemplo `wordpress1-wordpress-1`).
+
+### Redes
+| Red | Tipo | Servicios | Propósito |
+|-----|------|-----------|-----------|
+| `wp-red` | bridge | wordpress, phpmyadmin, https-portal | Tráfico de cara al usuario |
+| `back` | bridge, `internal: true` | wordpress, db, phpmyadmin | Base de datos aislada: sin acceso a internet ni al host |
+
+Flujo: navegador → `https-portal` (HTTPS) → `wordpress` → `db`.
+
+## Estructura de archivos
+```
+wordpress1/
+├── docker-compose.yml
+├── .env.example    ← plantilla de variables (el .env real no se sube)
+└── .gitignore
+```
+
+## Configuración
+Las credenciales se leen de un `.env` que **no se incluye en el repositorio**. Se crea a partir de la plantilla:
+
+```bash
+cp .env.example .env
+```
+
+Y se rellena con valores propios:
+
+```
+DB_NAME=wordpress
+DB_USER=wp_user
+DB_PASSWORD=cambia_esta_contraseña
+```
+
+## docker-compose.yml explicado
+
+### wordpress
+- `image: wordpress:6.8-apache`: WordPress 6.8 con Apache y PHP incluidos.
+- `WORDPRESS_DB_HOST: db`: nombre del servicio de la base de datos (resuelto por la red `back`).
+- `WORDPRESS_DB_USER`, `WORDPRESS_DB_PASSWORD`, `WORDPRESS_DB_NAME`: datos de conexión, tomados del `.env`.
+- `volumes: wordpress:/var/www/html`: conserva archivos del sitio, temas, plugins y subidas.
+- `depends_on` con `condition: service_healthy`: no arranca hasta que MySQL esté listo.
+- Redes `wp-red` y `back`: accesible por el proxy y con acceso a la base de datos.
+
+### db
+- `image: mysql:8.4`.
+- `MYSQL_DATABASE`, `MYSQL_USER`, `MYSQL_PASSWORD`: crean la base de datos y un usuario dedicado.
+- `MYSQL_RANDOM_ROOT_PASSWORD: "1"`: genera una contraseña de root aleatoria; solo se usa el usuario dedicado.
+- `volumes: db`: los datos persisten aunque se elimine el contenedor.
+- `healthcheck`: comprueba con `mysqladmin ping` que MySQL responde; espera 30 s antes de contar fallos (`start_period`) y reintenta hasta 10 veces.
+- Solo en la red `back`: no es accesible desde fuera.
+
+### phpmyadmin
+- `PMA_HOST: db`: se conecta al servicio `db`.
+- Acceso en `http://localhost:8088` con `DB_USER` y `DB_PASSWORD` (root no sirve, su contraseña es aleatoria).
+- Espera a que la base de datos esté `healthy`.
+
+### https-portal
+- `DOMAINS: 'localhost -> http://wordpress:80'`: publica `localhost` por HTTPS y reenvía el tráfico al contenedor de WordPress.
+- `STAGE: local`: genera certificados autofirmados (sin Let's Encrypt), válidos para pruebas locales.
+
+### Volúmenes
+- `wordpress`: archivos del sitio.
+- `db`: datos de MySQL.
+
+## Construcción y ejecución
+```bash
+sudo docker compose up -d
+```
+
+## Comprobación
+```bash
+sudo docker compose ps     # los cuatro servicios en "Up" (db en "healthy")
+```
+
+| Acceso | URL |
+|--------|-----|
+| WordPress (HTTPS, vía proxy) | `https://localhost` |
+| WordPress (directo, sin proxy) | `http://localhost:8082` |
+| phpMyAdmin | `http://localhost:8088` |
+
+El navegador mostrará una advertencia de certificado porque es autofirmado (`STAGE: local`); es normal en un entorno de pruebas.
+
+En el primer acceso aparece el asistente de instalación de WordPress (idioma, título del sitio, usuario administrador).
+
+## Problemas encontrados y solución
+| Problema | Causa | Solución |
+|----------|-------|----------|
+| (completar) | | |
+
+## Parada y limpieza
+```bash
+sudo docker compose down        # para y elimina los contenedores (los datos se conservan)
+sudo docker compose down -v     # además borra los volúmenes (se pierden el sitio y la base de datos)
+```

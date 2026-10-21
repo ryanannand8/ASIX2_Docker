@@ -1,0 +1,89 @@
+# Prestashop – Tienda PrestaShop con MySQL en Docker Compose
+
+## Objetivo
+Desplegar una tienda PrestaShop de ejemplo con Docker Compose: un contenedor de MySQL como base de datos y otro con PrestaShop, conectados por una red propia.
+
+## Arquitectura
+| Servicio | Contenedor | Imagen | Puerto host → contenedor | Función |
+|----------|------------|--------|--------------------------|---------|
+| `mysql` | `base_del_joseo` | `mysql:5.7` | (no se expone) | Base de datos `prestashop` |
+| `prestashop` | `prestashop` | `prestashop/prestashop:latest` | 8090 → 80 | Tienda y panel de administración |
+
+Ambos servicios comparten la red `brrr`, por lo que PrestaShop llega a MySQL usando el nombre del contenedor (`base_del_joseo`). MySQL no publica ningún puerto en el host: solo es accesible desde dentro de la red de Docker.
+
+## Estructura de archivos
+```
+Prestashop/
+├── docker-compose.yml
+├── .env.example    ← plantilla de variables (el .env real no se sube)
+└── .gitignore
+```
+
+## Configuración
+La contraseña no está escrita en el `docker-compose.yml`; se lee de un archivo `.env` que **no se incluye en el repositorio**. Se crea a partir de la plantilla:
+
+```bash
+cp .env.example .env
+```
+
+Y se edita con una contraseña propia:
+
+```
+PASS=cambia_esta_contraseña
+```
+
+## docker-compose.yml explicado
+
+### mysql
+- `image: mysql:5.7`: imagen oficial de MySQL, versión 5.7.
+- `restart: always`: se reinicia solo si cae o si arranca el host.
+- `MYSQL_ROOT_PASSWORD: ${PASS}`: contraseña del usuario root, tomada del `.env`.
+- `MYSQL_DATABASE: prestashop`: crea la base de datos en el primer arranque.
+- `networks: brrr`: se conecta a la red interna compartida.
+
+### prestashop
+- `image: prestashop/prestashop:latest`: imagen oficial de PrestaShop.
+- `depends_on: mysql`: arranca después de MySQL (solo controla el orden, no espera a que MySQL esté listo).
+- `ports: 8090:80`: la tienda se sirve en el puerto 8090 del host.
+- `DB_SERVER`, `DB_NAME`, `DB_USER`, `DB_PASSWD`: datos de conexión a la base de datos.
+- `networks: brrr`: se conecta a la misma red que MySQL.
+
+### Red
+- `brrr`: red interna de tipo bridge creada por Compose para que los contenedores se vean por nombre.
+
+## Construcción y ejecución
+```bash
+sudo docker compose up -d
+```
+
+## Instalación de PrestaShop
+1. Abrir `http://localhost:8090` y seguir el asistente de instalación.
+2. En el paso de base de datos indicar:
+   - Servidor: `base_del_joseo`
+   - Nombre de la base de datos: `prestashop`
+   - Usuario: `root`
+   - Contraseña: la definida en `PASS`
+3. Al terminar, la tienda queda en `http://localhost:8090`.
+4. El panel de administración está en una carpeta `admin` con nombre aleatorio. Para averiguarla:
+```bash
+   sudo docker exec prestashop ls /var/www/html | grep admin
+```
+   Y se accede a `http://localhost:8090/<carpeta_admin>`.
+
+## Comprobación
+```bash
+sudo docker compose ps                  # ambos servicios en "Up"
+sudo docker compose logs prestashop     # revisar errores de conexión a la base de datos
+```
+
+## Problemas encontrados y solución
+| Problema | Causa | Solución |
+|----------|-------|----------|
+| (completar) | | |
+
+## Parada y limpieza
+```bash
+sudo docker compose down        # para y elimina los contenedores
+sudo docker compose down -v     # además borra los volúmenes
+```
+Nota: este compose no define un volumen para MySQL, así que **los datos se pierden al eliminar el contenedor `base_del_joseo`**.
