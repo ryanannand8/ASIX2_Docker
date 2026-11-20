@@ -13,8 +13,8 @@ services:
       DB_USER: ${DB_USER}
       DB_PASSWD: ${DB_PASSWORD}
       PS_INSTALL_AUTO: 1
-      PS_DOMAIN: prestashopryan.test:443 # prestashop no se lleva muy bien  con el mapeado de puertos en este caso yo he actualizado tablas en la base de datos , pero con quitar el puerto bastaria
-      PS_ENABLE_SSL: 0
+      PS_DOMAIN: prestashopryan.test # sin puerto: con :443 PrestaShop entra en bucle de redirecciones
+      PS_ENABLE_SSL: 1
       PS_LANGUAGE: en
       PS_COUNTRY: ES
     networks:
